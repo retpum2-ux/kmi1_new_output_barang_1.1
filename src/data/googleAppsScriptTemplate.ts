@@ -18,31 +18,18 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  * 5. Kuantitas (Qty)
  * 6. Satuan (U/M)
  * 7. Keterangan Pemakaian
- * 
- * =========================================================================
- * PANDUAN PEMASANGAN (HANYA SEKALI):
- * 1. Buka Google Spreadsheet tujuan di Google Drive.
- * 2. Klik menu "Ekstensi" (Extensions) > "Apps Script".
- * 3. Hapus seluruh kode yang ada di editor (Code.gs).
- * 4. Tempelkan seluruh kode ini dari baris paling atas sampai bawah.
- * 5. Klik ikon disket "Simpan" (Ctrl+S / Cmd+S).
- * 6. Klik tombol biru "Terapkan" (Deploy) di kanan atas > "Deployment baru".
- * 7. Klik ikon gerigi "Pilih jenis", lalu pilih "Aplikasi Web" (Web app).
- * 8. Isi konfigurasi:
- *    - Deskripsi: Webhook Form KMI Wire & Cable
- *    - Jalankan sebagai (Execute as): Saya (email Anda)
- *    - Siapa yang memiliki akses (Who has access): SIAPA SAJA (Anyone)  <-- WAJIB!
- * 9. Klik "Terapkan" (Deploy). Jika muncul permintaan izin, klik "Beri Akses" (Authorize access) 
- *    > Pilih akun Google > Advanced (Lanjutan) > Buka Proyek (tidak aman).
- * 10. Salin "URL Aplikasi Web" (URL berakhiran /exec).
- * 11. Masukkan URL tersebut ke aplikasi (Key: APPS_SCRIPT_URL).
  * =========================================================================
  */
+
+// OPTIONAL: Jika Anda membuat skrip ini dari luar (standalone di Google Drive),
+// tempel ID Spreadsheet Anda di bawah ini (dari URL spreadsheet: /d/[ID_SPREADSHEET]/edit).
+// Jika Anda membuka skrip dari menu "Ekstensi > Apps Script", biarkan kosong.
+var SPREADSHEET_ID = '';
 
 // Nama tab default untuk data pengambilan
 var DEFAULT_SHEET_NAME = 'Pengambilan';
 
-// Header kolom tabel
+// Header 7 kolom tabel
 var HEADERS = [
   'Tanggal Form',
   'Mesin',
@@ -54,44 +41,100 @@ var HEADERS = [
 ];
 
 /**
- * Menyiapkan sheet dan header jika belum ada
+ * Fungsi helper untuk mendeteksi Spreadsheet secara aman
  */
-function getOrCreateSheet(ss, sheetName) {
-  var targetName = sheetName || DEFAULT_SHEET_NAME;
+function getSpreadsheet() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (ss) return ss;
+  } catch (err) {}
+
+  try {
+    var ssActive = SpreadsheetApp.getActive();
+    if (ssActive) return ssActive;
+  } catch (err) {}
+
+  if (typeof SPREADSHEET_ID === 'string' && SPREADSHEET_ID.trim().length > 10) {
+    try {
+      return SpreadsheetApp.openById(SPREADSHEET_ID.trim());
+    } catch (err) {}
+  }
+
+  return null;
+}
+
+/**
+ * Menyiapkan sheet dan header jika belum ada (Aman dipanggil langsung tanpa parameter)
+ */
+function getOrCreateSheet(sheetNameOrSs, maybeSheetName) {
+  var ss;
+  var targetName;
+
+  // Mendukung pemanggilan getOrCreateSheet(ss, 'Pengambilan') ATAU getOrCreateSheet('Pengambilan') ATAU getOrCreateSheet()
+  if (sheetNameOrSs && typeof sheetNameOrSs.getSheetByName === 'function') {
+    ss = sheetNameOrSs;
+    targetName = maybeSheetName || DEFAULT_SHEET_NAME;
+  } else {
+    targetName = (typeof sheetNameOrSs === 'string' && sheetNameOrSs.trim()) 
+      ? sheetNameOrSs.trim() 
+      : (typeof maybeSheetName === 'string' && maybeSheetName.trim() ? maybeSheetName.trim() : DEFAULT_SHEET_NAME);
+    ss = getSpreadsheet();
+  }
+
+  if (!ss) {
+    throw new Error(
+      "Spreadsheet tidak ditemukan! Pastikan skrip ini dibuka langsung dari menu 'Ekstensi > Apps Script' pada Google Spreadsheet Anda, atau masukkan SPREADSHEET_ID di bagian atas skrip."
+    );
+  }
+
   var sheet = ss.getSheetByName(targetName);
-  
   if (!sheet) {
     sheet = ss.insertSheet(targetName);
   }
-  
-  // Jika sheet masih kosong (baris = 0), buat header 7 kolom
+
+  // Jika sheet masih kosong (baris = 0), buat header 7 kolom otomatis
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(HEADERS);
-    
-    // Format baris header
+
+    // Format baris header (tebal, warna biru muda elegan, rata tengah)
     var headerRange = sheet.getRange(1, 1, 1, HEADERS.length);
     headerRange.setFontWeight('bold');
     headerRange.setBackground('#e8f0fe');
     headerRange.setFontColor('#1a73e8');
     headerRange.setHorizontalAlignment('center');
     sheet.setFrozenRows(1);
-    
+
     // Auto-fit kolom
     for (var col = 1; col <= HEADERS.length; col++) {
       sheet.autoResizeColumn(col);
     }
   }
-  
+
   return sheet;
 }
 
 /**
- * Menangani permintaan POST (Pengiriman data dari form web)
+ * FUNGSI UJI COBA MANUAL (Klik tombol 'Jalankan / Run' di editor dengan memilih fungsi ini)
+ */
+function testKoneksiManual() {
+  Logger.log("Memulai uji coba koneksi...");
+  var ss = getSpreadsheet();
+  if (!ss) {
+    Logger.log("GAGAL: Spreadsheet tidak terdeteksi. Silakan buka menu 'Ekstensi > Apps Script' dari file Spreadsheet Anda.");
+    return;
+  }
+  var sheet = getOrCreateSheet(DEFAULT_SHEET_NAME);
+  Logger.log("BERHASIL! Terhubung ke Spreadsheet: " + ss.getName());
+  Logger.log("Sheet aktif: " + sheet.getName() + " (Jumlah baris saat ini: " + sheet.getLastRow() + ")");
+}
+
+/**
+ * Menangani permintaan POST (Pengiriman data dari formulir web)
  */
 function doPost(e) {
   var lock = LockService.getScriptLock();
-  
-  // Tunggu maksimal 30 detik untuk menghindari benturan data (concurrency)
+
+  // Cegah benturan data (concurrency)
   try {
     lock.waitLock(30000);
   } catch (err) {
@@ -105,14 +148,21 @@ function doPost(e) {
     if (!e || !e.postData || !e.postData.contents) {
       return createJsonResponse({
         status: 'error',
-        message: 'Payload kosong atau tidak valid.'
+        message: 'Payload data kosong atau tidak valid.'
       });
     }
 
     var payload = JSON.parse(e.postData.contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var ss = getSpreadsheet();
 
-    // 1. Fitur Uji Koneksi / Ping
+    if (!ss) {
+      return createJsonResponse({
+        status: 'error',
+        message: 'Spreadsheet tidak terhubung. Buka skrip via menu Ekstensi > Apps Script di Spreadsheet Anda.'
+      });
+    }
+
+    // 1. Fitur Uji Koneksi / Ping dari Web
     if (payload.action === 'ping' || payload.type === 'test') {
       return createJsonResponse({
         status: 'success',
@@ -125,7 +175,7 @@ function doPost(e) {
     // 2. Simpan Data Formulir Pengambilan
     var sheet = getOrCreateSheet(ss, payload.sheetName);
     var items = payload.items || [];
-    
+
     if (!Array.isArray(items) || items.length === 0) {
       return createJsonResponse({
         status: 'error',
@@ -141,7 +191,7 @@ function doPost(e) {
     for (var i = 0; i < items.length; i++) {
       var it = items[i];
       var qtyVal = it.qty !== undefined && it.qty !== null ? it.qty : '';
-      
+
       rowsToAdd.push([
         tanggal,
         mesin,
@@ -153,15 +203,14 @@ function doPost(e) {
       ]);
     }
 
-    // Tulis baris baru sekaligus ke spreadsheet
+    // Tulis baris baru sekaligus ke spreadsheet (Batch insert)
     if (rowsToAdd.length > 0) {
       var startRow = sheet.getLastRow() + 1;
       var range = sheet.getRange(startRow, 1, rowsToAdd.length, HEADERS.length);
       range.setValues(rowsToAdd);
-      
-      // Rapikan kolom kuantitas agar rata kanan
+
+      // Format kolom kuantitas rata kanan & satuan rata tengah
       sheet.getRange(startRow, 5, rowsToAdd.length, 1).setHorizontalAlignment('right');
-      // Satuan rata tengah
       sheet.getRange(startRow, 6, rowsToAdd.length, 1).setHorizontalAlignment('center');
     }
 
@@ -186,7 +235,7 @@ function doPost(e) {
  * Menangani permintaan GET (Untuk pengecekan status webhook via browser)
  */
 function doGet(e) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var ss = getSpreadsheet();
   return createJsonResponse({
     status: 'online',
     message: 'Webhook Google Apps Script untuk Form Pengambilan PT KMI Wire and Cable Tbk aktif dan siap menerima data.',
