@@ -45,21 +45,25 @@ function writeJsonFile<T>(filePath: string, data: T): void {
   }
 }
 
-// In-memory or file-loaded data
-let appSettings = readJsonFile(SETTINGS_FILE, {
-  webhookUrl: process.env.GOOGLE_SHEETS_WEBHOOK_URL || '',
-  webhookUrl2: process.env.GOOGLE_SHEETS_WEBHOOK_URL_2 || '',
-  sheetNamePengambilan: 'Pengambilan',
-  sheetNamePengambilan2: 'Pengambilan',
-  companyName: 'PT KMI Wire and Cable Tbk',
-});
+const defaultAppsScriptUrl =
+  process.env.APPS_SCRIPT_URL ||
+  process.env.APPS_SCRIPT_KEY ||
+  process.env.GOOGLE_APPS_SCRIPT_URL ||
+  process.env.GOOGLE_SHEETS_WEBHOOK_URL ||
+  '';
+
+let loadedSettings = readJsonFile<any>(SETTINGS_FILE, {});
+let appSettings = {
+  appsScriptUrl: loadedSettings.appsScriptUrl || loadedSettings.webhookUrl || defaultAppsScriptUrl,
+  webhookUrl: loadedSettings.appsScriptUrl || loadedSettings.webhookUrl || defaultAppsScriptUrl,
+  sheetNamePengambilan: loadedSettings.sheetNamePengambilan || 'Pengambilan',
+  companyName: loadedSettings.companyName || 'PT KMI Wire and Cable Tbk',
+};
 
 // Sync webhook from env if present and not previously configured
-if (!appSettings.webhookUrl && process.env.GOOGLE_SHEETS_WEBHOOK_URL) {
-  appSettings.webhookUrl = process.env.GOOGLE_SHEETS_WEBHOOK_URL;
-}
-if (!appSettings.webhookUrl2 && process.env.GOOGLE_SHEETS_WEBHOOK_URL_2) {
-  appSettings.webhookUrl2 = process.env.GOOGLE_SHEETS_WEBHOOK_URL_2;
+if (!appSettings.appsScriptUrl && defaultAppsScriptUrl) {
+  appSettings.appsScriptUrl = defaultAppsScriptUrl;
+  appSettings.webhookUrl = defaultAppsScriptUrl;
 }
 
 let records = readJsonFile<any[]>(RECORDS_FILE, []);
@@ -74,24 +78,35 @@ app.get('/api/health', (_req: Request, res: Response) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     recordsCount: records.length,
-    sheetsConnected: Boolean(appSettings.webhookUrl),
-    sheets2Connected: Boolean(appSettings.webhookUrl2),
+    sheetsConnected: Boolean(appSettings.appsScriptUrl || appSettings.webhookUrl),
+    appsScriptUrlConfigured: Boolean(appSettings.appsScriptUrl || appSettings.webhookUrl),
   });
 });
 
 // Settings
 app.get('/api/settings', (_req: Request, res: Response) => {
-  res.json(appSettings);
+  res.json({
+    ...appSettings,
+    appsScriptUrl: appSettings.appsScriptUrl || appSettings.webhookUrl || '',
+    webhookUrl: appSettings.appsScriptUrl || appSettings.webhookUrl || '',
+  });
 });
 
 app.post('/api/settings', (req: Request, res: Response) => {
-  const { webhookUrl, webhookUrl2, sheetNamePengambilan, sheetNamePengambilan2, companyName } = req.body;
+  const { appsScriptUrl, webhookUrl, sheetNamePengambilan, companyName } = req.body;
+  const targetUrl = (
+    typeof appsScriptUrl === 'string'
+      ? appsScriptUrl
+      : typeof webhookUrl === 'string'
+      ? webhookUrl
+      : appSettings.appsScriptUrl || ''
+  ).trim();
+
   appSettings = {
     ...appSettings,
-    webhookUrl: typeof webhookUrl === 'string' ? webhookUrl.trim() : appSettings.webhookUrl,
-    webhookUrl2: typeof webhookUrl2 === 'string' ? webhookUrl2.trim() : (appSettings.webhookUrl2 || ''),
+    appsScriptUrl: targetUrl,
+    webhookUrl: targetUrl,
     sheetNamePengambilan: sheetNamePengambilan?.trim() || 'Pengambilan',
-    sheetNamePengambilan2: sheetNamePengambilan2?.trim() || 'Pengambilan',
     companyName: companyName?.trim() || 'PT KMI Wire and Cable Tbk',
   };
   writeJsonFile(SETTINGS_FILE, appSettings);
@@ -258,11 +273,18 @@ app.delete('/api/records', (_req: Request, res: Response) => {
 
 // Test Google Sheets Webhook Connection
 app.post('/api/test-sheets', async (req: Request, res: Response) => {
-  const targetUrl = (req.body.webhookUrl || appSettings.webhookUrl || '').trim();
+  const targetUrl = (
+    req.body.appsScriptUrl ||
+    req.body.webhookUrl ||
+    appSettings.appsScriptUrl ||
+    appSettings.webhookUrl ||
+    ''
+  ).trim();
+
   if (!targetUrl) {
     return res.status(400).json({
       success: false,
-      message: 'URL Google Apps Script Webhook belum diisi!',
+      message: 'URL Google Apps Script (Key: APPS_SCRIPT_URL) belum diisi!',
     });
   }
 
@@ -328,7 +350,7 @@ app.post('/api/submit', async (req: Request, res: Response) => {
     const transactionId = `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
     const timestamp = new Date().toISOString();
 
-    const record = {
+    const record: any = {
       id: transactionId,
       ...submission,
       createdAt: timestamp,
@@ -336,137 +358,68 @@ app.post('/api/submit', async (req: Request, res: Response) => {
       syncError: null,
     };
 
-    let syncResult: any = null;
-    const webhookUrl1 = (req.body.webhookUrl || appSettings.webhookUrl || '').trim();
-    const webhookUrl2 = (req.body.webhookUrl2 || appSettings.webhookUrl2 || '').trim();
-    const sheetName1 = (req.body.sheetName || appSettings.sheetNamePengambilan || 'Pengambilan').trim();
-    const sheetName2 = (req.body.sheetName2 || appSettings.sheetNamePengambilan2 || 'Pengambilan').trim();
+    const targetUrl = (
+      req.body.appsScriptUrl ||
+      req.body.webhookUrl ||
+      appSettings.appsScriptUrl ||
+      appSettings.webhookUrl ||
+      ''
+    ).trim();
 
-    const forwardPromises: Promise<{ target: number; success: boolean; status?: number; data?: any; error?: string }>[] = [];
-
-    if (webhookUrl1) {
-      forwardPromises.push(
-        (async () => {
-          try {
-            const payloadToSheets = {
-              action: 'submit',
-              transactionId,
-              timestamp,
-              type: submission.type || 'pengambilan',
-              sheetName: sheetName1,
-              tanggal: submission.tanggal,
-              mesin: submission.mesin || '-',
-              namaPengambil: submission.namaPengambil || '-',
-              items: submission.items,
-              targetSpreadsheet: 1,
-            };
-
-            const sheetResponse = await fetch(webhookUrl1, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payloadToSheets),
-            });
-
-            const respText = await sheetResponse.text();
-            let parsedResp: any = null;
-            try { parsedResp = JSON.parse(respText); } catch { parsedResp = { raw: respText }; }
-
-            return {
-              target: 1,
-              success: sheetResponse.ok,
-              status: sheetResponse.status,
-              data: parsedResp,
-              error: sheetResponse.ok ? undefined : `HTTP ${sheetResponse.status}: ${respText}`,
-            };
-          } catch (err: any) {
-            return { target: 1, success: false, error: err.message || 'Koneksi ke Spreadsheet 1 gagal' };
-          }
-        })()
-      );
-    }
-
-    if (webhookUrl2) {
-      forwardPromises.push(
-        (async () => {
-          try {
-            const payloadToSheets2 = {
-              action: 'submit',
-              transactionId,
-              timestamp,
-              type: submission.type || 'pengambilan',
-              sheetName: sheetName2,
-              tanggal: submission.tanggal,
-              mesin: submission.mesin || '-',
-              namaPengambil: submission.namaPengambil || '-',
-              items: submission.items,
-              targetSpreadsheet: 2,
-            };
-
-            const sheetResponse2 = await fetch(webhookUrl2, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(payloadToSheets2),
-            });
-
-            const respText2 = await sheetResponse2.text();
-            let parsedResp2: any = null;
-            try { parsedResp2 = JSON.parse(respText2); } catch { parsedResp2 = { raw: respText2 }; }
-
-            return {
-              target: 2,
-              success: sheetResponse2.ok,
-              status: sheetResponse2.status,
-              data: parsedResp2,
-              error: sheetResponse2.ok ? undefined : `HTTP ${sheetResponse2.status}: ${respText2}`,
-            };
-          } catch (err: any) {
-            return { target: 2, success: false, error: err.message || 'Koneksi ke Spreadsheet 2 gagal' };
-          }
-        })()
-      );
-    }
-
-    const results = await Promise.all(forwardPromises);
-    const res1 = results.find((r) => r.target === 1);
-    const res2 = results.find((r) => r.target === 2);
-
-    record.syncedToSheets = Boolean(res1?.success);
-    record.syncedToSheets2 = Boolean(res2?.success);
+    const sheetName = (
+      req.body.sheetName ||
+      req.body.sheetNamePengambilan ||
+      appSettings.sheetNamePengambilan ||
+      'Pengambilan'
+    ).trim();
 
     let message = '';
-    const hasSheet1 = Boolean(webhookUrl1);
-    const hasSheet2 = Boolean(webhookUrl2);
 
-    if (hasSheet1 && hasSheet2) {
-      if (res1?.success && res2?.success) {
-        message = 'Data berhasil disimpan dan otomatis terisi ke KEDUA Google Spreadsheet (Spreadsheet 1 & Spreadsheet 2)!';
-      } else if (res1?.success && !res2?.success) {
-        message = `Data tersimpan ke Spreadsheet 1, namun gagal ke Spreadsheet 2 (${res2?.error || 'gagal sync'}).`;
-        record.syncError = `Spreadsheet 2 gagal: ${res2?.error}`;
-      } else if (!res1?.success && res2?.success) {
-        message = `Data tersimpan ke Spreadsheet 2, namun gagal ke Spreadsheet 1 (${res1?.error || 'gagal sync'}).`;
-        record.syncError = `Spreadsheet 1 gagal: ${res1?.error}`;
-      } else {
-        message = 'Data tersimpan lokal, namun pengiriman ke kedua Spreadsheet gagal.';
-        record.syncError = `Sheet 1: ${res1?.error} | Sheet 2: ${res2?.error}`;
-      }
-    } else if (hasSheet1) {
-      if (res1?.success) {
-        message = 'Data berhasil disimpan dan otomatis terisi ke Google Spreadsheet!';
-      } else {
-        message = `Data tersimpan lokal, pengiriman ke Spreadsheet 1 gagal (${res1?.error}).`;
-        record.syncError = res1?.error;
-      }
-    } else if (hasSheet2) {
-      if (res2?.success) {
-        message = 'Data berhasil disimpan dan otomatis terisi ke Google Spreadsheet 2!';
-      } else {
-        message = `Data tersimpan lokal, pengiriman ke Spreadsheet 2 gagal (${res2?.error}).`;
-        record.syncError = res2?.error;
+    if (targetUrl) {
+      try {
+        const payloadToSheets = {
+          action: 'submit',
+          transactionId,
+          timestamp,
+          type: submission.type || 'pengambilan',
+          sheetName,
+          tanggal: submission.tanggal,
+          mesin: submission.mesin || '-',
+          namaPengambil: submission.namaPengambil || '-',
+          items: submission.items,
+        };
+
+        const sheetResponse = await fetch(targetUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payloadToSheets),
+        });
+
+        const respText = await sheetResponse.text();
+        let parsedResp: any = null;
+        try {
+          parsedResp = JSON.parse(respText);
+        } catch {
+          parsedResp = { raw: respText };
+        }
+
+        if (sheetResponse.ok) {
+          record.syncedToSheets = true;
+          message = 'Data berhasil disimpan dan otomatis terisi ke Google Spreadsheet!';
+        } else {
+          record.syncedToSheets = false;
+          record.syncError = `HTTP ${sheetResponse.status}: ${respText}`;
+          message = `Data tersimpan lokal, pengiriman ke Spreadsheet gagal (${record.syncError}).`;
+        }
+      } catch (err: any) {
+        record.syncedToSheets = false;
+        record.syncError = err.message || 'Koneksi ke Spreadsheet gagal';
+        message = `Data tersimpan lokal, pengiriman ke Spreadsheet gagal (${record.syncError}).`;
       }
     } else {
-      message = 'Data tersimpan di sistem lokal. Webhook Google Spreadsheet belum dikonfigurasi.';
-      record.syncError = 'Webhook belum diatur';
+      record.syncedToSheets = false;
+      record.syncError = 'Key APPS_SCRIPT_URL belum dikonfigurasi';
+      message = 'Data tersimpan di sistem lokal. URL Google Apps Script belum dikonfigurasi.';
     }
 
     // Save record to backend database
@@ -478,10 +431,7 @@ app.post('/api/submit', async (req: Request, res: Response) => {
       success: true,
       transactionId,
       record,
-      synced: record.syncedToSheets || record.syncedToSheets2,
-      syncedBoth: record.syncedToSheets && record.syncedToSheets2,
-      sheet1Result: res1,
-      sheet2Result: res2,
+      synced: record.syncedToSheets,
       message,
     });
   } catch (error: any) {

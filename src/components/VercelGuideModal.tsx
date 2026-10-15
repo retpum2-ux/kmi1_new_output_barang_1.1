@@ -204,23 +204,23 @@ export const VercelGuideModal: React.FC<VercelGuideModalProps> = ({
                   <p>
                     2. Pada bagian <strong>Environment Variables</strong> di Vercel sebelum klik Deploy:
                   </p>
-                  <div className="bg-stone-100 border border-stone-300 p-2 font-mono text-[11px] space-y-1">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <strong className="text-stone-900">Key:</strong> <code>GOOGLE_SHEETS_WEBHOOK_URL</code>
+                    <div className="bg-stone-100 border border-stone-300 p-2 font-mono text-[11px] space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <strong className="text-stone-900">Key:</strong> <code>APPS_SCRIPT_URL</code>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard('APPS_SCRIPT_URL', 'env-key')}
+                          className="text-blue-600 hover:text-blue-800 text-[10px] font-bold"
+                        >
+                          {copiedKey === 'env-key' ? 'Tersalin!' : 'Salin Key'}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard('GOOGLE_SHEETS_WEBHOOK_URL', 'env-key')}
-                        className="text-blue-600 hover:text-blue-800 text-[10px] font-bold"
-                      >
-                        {copiedKey === 'env-key' ? 'Tersalin!' : 'Salin Key'}
-                      </button>
+                      <div>
+                        <strong className="text-stone-900">Value:</strong> <em>[Pastekan URL Web App Apps Script dari langkah A]</em>
+                      </div>
                     </div>
-                    <div>
-                      <strong className="text-stone-900">Value:</strong> <em>[Pastekan URL Web App Apps Script dari langkah A]</em>
-                    </div>
-                  </div>
                   <p>
                     3. Klik tombol biru <strong>"Deploy"</strong>. Selesai!
                   </p>

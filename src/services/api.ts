@@ -112,8 +112,14 @@ export async function getAppSettings(): Promise<AppSettings> {
     const res = await fetch('/api/settings');
     if (res.ok) {
       const data = await res.json();
-      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(data));
-      return data;
+      const normalized: AppSettings = {
+        ...DEFAULT_SETTINGS,
+        ...data,
+        appsScriptUrl: data.appsScriptUrl || data.webhookUrl || '',
+        webhookUrl: data.appsScriptUrl || data.webhookUrl || '',
+      };
+      localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(normalized));
+      return normalized;
     }
   } catch {
     // fallback
@@ -122,7 +128,13 @@ export async function getAppSettings(): Promise<AppSettings> {
   const stored = localStorage.getItem(STORAGE_KEYS.SETTINGS);
   if (stored) {
     try {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) };
+      const parsed = JSON.parse(stored);
+      return {
+        ...DEFAULT_SETTINGS,
+        ...parsed,
+        appsScriptUrl: parsed.appsScriptUrl || parsed.webhookUrl || '',
+        webhookUrl: parsed.appsScriptUrl || parsed.webhookUrl || '',
+      };
     } catch {
       // ignore
     }
@@ -132,12 +144,17 @@ export async function getAppSettings(): Promise<AppSettings> {
 }
 
 export async function saveAppSettings(settings: AppSettings): Promise<boolean> {
-  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+  const normalized: AppSettings = {
+    ...settings,
+    appsScriptUrl: settings.appsScriptUrl || settings.webhookUrl || '',
+    webhookUrl: settings.appsScriptUrl || settings.webhookUrl || '',
+  };
+  localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(normalized));
   try {
     const res = await fetch('/api/settings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(settings),
+      body: JSON.stringify(normalized),
     });
     return res.ok;
   } catch {
@@ -146,22 +163,23 @@ export async function saveAppSettings(settings: AppSettings): Promise<boolean> {
 }
 
 // ================= TEST CONNECTION =================
-export async function testSheetsConnection(webhookUrl: string): Promise<{
+export async function testSheetsConnection(appsScriptUrl: string): Promise<{
   success: boolean;
   message: string;
   details?: any;
 }> {
+  const targetUrl = appsScriptUrl.trim();
   try {
     const res = await fetch('/api/test-sheets', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ webhookUrl }),
+      body: JSON.stringify({ appsScriptUrl: targetUrl, webhookUrl: targetUrl }),
     });
     return await res.json();
   } catch (err: any) {
     // Attempt direct ping if backend is not responding
     try {
-      const direct = await fetch(webhookUrl, {
+      const direct = await fetch(targetUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'ping', type: 'test' }),
@@ -193,6 +211,7 @@ export async function submitFormData(
   record?: SubmissionRecord;
 }> {
   const localSettings = await getAppSettings();
+  const scriptUrl = (localSettings.appsScriptUrl || localSettings.webhookUrl || '').trim();
 
   try {
     const res = await fetch('/api/submit', {
@@ -200,10 +219,9 @@ export async function submitFormData(
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...formData,
-        webhookUrl: localSettings.webhookUrl,
-        webhookUrl2: localSettings.webhookUrl2,
+        appsScriptUrl: scriptUrl,
+        webhookUrl: scriptUrl,
         sheetName: localSettings.sheetNamePengambilan,
-        sheetName2: localSettings.sheetNamePengambilan2,
       }),
     });
 
@@ -214,7 +232,6 @@ export async function submitFormData(
         id: data.transactionId || `TRX-${Date.now()}`,
         createdAt: new Date().toISOString(),
         syncedToSheets: data.synced,
-        syncedToSheets2: data.syncedBoth,
       });
       return data;
     }
@@ -222,94 +239,54 @@ export async function submitFormData(
     console.warn('Backend /api/submit failed, trying direct or local save:', err);
   }
 
-  // Fallback: If backend is unreachable, try direct fetch if webhookUrls are present
+  // Fallback: If backend is unreachable, try direct fetch if scriptUrl is present
   const transactionId = `TRX-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const now = new Date().toISOString();
-  let synced1 = false;
-  let synced2 = false;
+  let synced = false;
 
-  const fallbackTasks: Promise<void>[] = [];
-
-  const url1 = localSettings.webhookUrl?.trim();
-  const url2 = localSettings.webhookUrl2?.trim();
-
-  if (url1) {
-    fallbackTasks.push(
-      (async () => {
-        try {
-          const payload = {
-            ...formData,
-            action: 'submit',
-            transactionId,
-            timestamp: now,
-            sheetName: localSettings.sheetNamePengambilan,
-            targetSpreadsheet: 1,
-          };
-          await fetch(url1, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            mode: 'no-cors',
-          });
-          synced1 = true;
-        } catch {
-          // ignore
-        }
-      })()
-    );
+  if (scriptUrl) {
+    try {
+      const payload = {
+        ...formData,
+        action: 'submit',
+        transactionId,
+        timestamp: now,
+        sheetName: localSettings.sheetNamePengambilan,
+      };
+      await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        mode: 'no-cors',
+      });
+      synced = true;
+    } catch {
+      // ignore
+    }
   }
-
-  if (url2) {
-    fallbackTasks.push(
-      (async () => {
-        try {
-          const payload = {
-            ...formData,
-            action: 'submit',
-            transactionId,
-            timestamp: now,
-            sheetName: localSettings.sheetNamePengambilan2 || localSettings.sheetNamePengambilan,
-            targetSpreadsheet: 2,
-          };
-          await fetch(url2, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-            mode: 'no-cors',
-          });
-          synced2 = true;
-        } catch {
-          // ignore
-        }
-      })()
-    );
-  }
-
-  await Promise.allSettled(fallbackTasks);
 
   let syncMsg = 'Data tersimpan di perangkat lokal.';
-  if (synced1 && synced2) {
-    syncMsg = 'Data berhasil dikirim ke KEDUA Google Spreadsheet!';
-  } else if (synced1) {
-    syncMsg = 'Data berhasil dikirim ke Google Spreadsheet 1!';
-  } else if (synced2) {
-    syncMsg = 'Data berhasil dikirim ke Google Spreadsheet 2!';
+  if (synced) {
+    syncMsg = 'Data berhasil dikirim dan tersinkron ke Google Spreadsheet!';
+  } else if (!scriptUrl) {
+    syncMsg = 'Data tersimpan lokal. Silakan atur URL Apps Script di Pengaturan untuk sync otomatis.';
+  } else {
+    syncMsg = 'Data tersimpan lokal, koneksi langsung ke Google Apps Script gagal.';
   }
 
   const fallbackRecord: SubmissionRecord = {
     ...formData,
     id: transactionId,
     createdAt: now,
-    syncedToSheets: synced1 || synced2,
-    syncedToSheets2: synced2,
-    syncError: (synced1 || synced2) ? undefined : 'Tersimpan offline',
+    syncedToSheets: synced,
+    syncError: synced ? undefined : 'Tersimpan offline',
   };
 
   saveRecordLocally(fallbackRecord);
 
   return {
     success: true,
-    synced: synced1 || synced2,
+    synced,
     message: syncMsg,
     record: fallbackRecord,
   };

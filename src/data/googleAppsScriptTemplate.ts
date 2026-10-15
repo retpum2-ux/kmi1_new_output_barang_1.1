@@ -27,7 +27,7 @@ export const GOOGLE_APPS_SCRIPT_CODE = `/**
  *    - Siapa yang memiliki akses (Who has access): SIAPA SAJA (Anyone)  <-- PENTING!
  * 8. Klik "Terapkan" (Deploy) & Berikan izin (Review Permissions).
  * 9. Salin URL Aplikasi Web yang diberikan (berakhiran /exec).
- * 10. Masukkan URL tersebut ke konfigurasi web app / Vercel Environment Variables.
+ * 10. Masukkan URL tersebut ke konfigurasi web app / Vercel Environment Variables dengan Key: APPS_SCRIPT_URL.
  */
 
 function setupSheetsIfMissing(ss) {

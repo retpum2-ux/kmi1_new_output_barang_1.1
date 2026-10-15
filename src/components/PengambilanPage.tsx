@@ -1,6 +1,15 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Plus, Trash2, CheckCircle2, AlertCircle, RefreshCw, Send, HelpCircle } from 'lucide-react';
-import { ItemEntryPengambilan, PengambilanFormData } from '../types';
+import {
+  ArrowLeft,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Send,
+  HelpCircle,
+} from 'lucide-react';
+import { ItemEntryPengambilan, PengambilanFormData, AppSettings } from '../types';
 import { ItemSearchDropdown } from './ItemSearchDropdown';
 import { UnitSelectDropdown } from './UnitSelectDropdown';
 import { DAFTAR_BARANG, ItemBarang } from '../code/daftar-barang';
@@ -10,11 +19,19 @@ import { PanduanPengisianModal } from './PanduanPengisianModal';
 interface PengambilanPageProps {
   onBack?: () => void;
   onSubmit: (formData: PengambilanFormData) => Promise<{ success: boolean; synced: boolean; message: string }>;
+  onOpenSettings?: () => void;
+  onOpenMaster?: () => void;
+  onOpenHistory?: () => void;
+  settings?: AppSettings;
 }
 
 export const PengambilanPage: React.FC<PengambilanPageProps> = ({
   onBack,
   onSubmit,
+  onOpenSettings,
+  onOpenMaster,
+  onOpenHistory,
+  settings,
 }) => {
   const todayStr = new Date().toISOString().slice(0, 10);
 
@@ -201,8 +218,8 @@ export const PengambilanPage: React.FC<PengambilanPageProps> = ({
         className="w-full max-w-2xl bg-[#fffaf3] border border-stone-800 rounded-2xl shadow-md p-4 sm:p-8 pt-3 sm:pt-4 relative space-y-5"
       >
         {/* ================= 1. BAGIAN JUDUL & HEADER (DI LUAR KOTAK) ================= */}
-        {/* Top row: Company label (Left) & [Petunjuk Isi] + [KMI1] (Right) */}
-        <div className="flex items-center justify-between gap-2 text-xs sm:text-sm font-semibold mb-2">
+        {/* Top row: Company label (Left) & Controls (Right) */}
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs sm:text-sm font-semibold mb-2">
           <span className="text-stone-600 font-semibold tracking-wide">
             PT KMI Wire and Cable Tbk
           </span>

@@ -145,10 +145,9 @@ export const INITIAL_MACHINES: string[] = [
 ];
 
 export const DEFAULT_SETTINGS: AppSettings = {
+  appsScriptUrl: '',
   webhookUrl: '',
-  webhookUrl2: '',
   sheetNamePengambilan: 'Pengambilan',
-  sheetNamePengambilan2: 'Pengambilan',
   companyName: 'PT KMI Wire and Cable Tbk',
 };
 

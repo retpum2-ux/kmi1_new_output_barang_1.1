@@ -37,16 +37,14 @@ export interface SubmissionRecord extends PengambilanFormData {
   id: string;
   createdAt: string;
   syncedToSheets: boolean;
-  syncedToSheets2?: boolean;
   syncSummary?: string;
   syncError?: string;
 }
 
 export interface AppSettings {
-  webhookUrl: string;
-  webhookUrl2?: string;
+  appsScriptUrl: string;
+  webhookUrl?: string; // backwards compatibility alias
   sheetNamePengambilan: string;
-  sheetNamePengambilan2?: string;
   spreadsheetId?: string;
   companyName: string;
 }

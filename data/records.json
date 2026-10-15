@@ -1,5 +1,24 @@
 [
   {
+    "id": "TRX-1792032790505-613",
+    "type": "pengambilan",
+    "tanggal": "2026-10-15",
+    "mesin": "RBD-01",
+    "namaPengambil": "Operator",
+    "items": [
+      {
+        "barang": "Copper Wire Rod Cu 8.00 mm (Grade A)",
+        "qty": 100,
+        "unit": "KG",
+        "keterangan": "Tes"
+      }
+    ],
+    "createdAt": "2026-10-15T02:53:10.505Z",
+    "syncedToSheets": false,
+    "syncError": "Webhook belum diatur",
+    "syncedToSheets2": false
+  },
+  {
     "id": "TRX-1791274405457-937",
     "type": "pengambilan",
     "tanggal": "2026-10-06",

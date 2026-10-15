@@ -185,14 +185,14 @@ export const PanduanPengisianModal: React.FC<PanduanPengisianModalProps> = ({
                 </div>
               </div>
 
-              {/* Info 2 Spreadsheet */}
+              {/* Info Spreadsheet */}
               <div className="mt-3 p-3 bg-emerald-50 border border-emerald-300 rounded-lg text-emerald-900 text-xs">
                 <p className="font-bold flex items-center gap-1.5 mb-1">
                   <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  Dukungan Sinkronisasi ke 2 Spreadsheet Berbeda:
+                  Sinkronisasi ke Google Spreadsheet:
                 </p>
                 <p className="text-emerald-800 leading-relaxed">
-                  Hasil pengisian form ini otomatis terkirim serentak ke <strong>2 Google Spreadsheet berbeda</strong> sekaligus (misal: Spreadsheet Pabrik & Spreadsheet Backup/Logistik) melalui konfigurasi Webhook URL 1 dan Webhook URL 2 di backend server / Vercel.
+                  Hasil pengisian form ini otomatis langsung terkirim dan tercatat ke <strong>1 Google Spreadsheet</strong> melalui Webhook Apps Script (Key: <code className="font-mono font-bold bg-emerald-100 px-1 py-0.5 rounded text-emerald-900">APPS_SCRIPT_URL</code>).
                 </p>
               </div>
             </div>

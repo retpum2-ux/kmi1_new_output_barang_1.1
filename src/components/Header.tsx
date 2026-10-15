@@ -21,7 +21,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHistory,
   settings,
 }) => {
-  const isSheetsConnected = Boolean(settings.webhookUrl && settings.webhookUrl.trim().length > 10);
+  const scriptUrl = (settings.appsScriptUrl || settings.webhookUrl || '').trim();
+  const isSheetsConnected = Boolean(scriptUrl.length > 10);
 
   return (
     <header className="bg-white border-b border-stone-200 sticky top-0 z-30 shadow-xs">
